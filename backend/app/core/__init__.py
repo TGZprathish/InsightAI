@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "InsightAI"
     APP_ENV: str = "development"
     APP_DEBUG: bool = True
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,http://localhost:80,https://insight-ai-mu-wheat.vercel.app"
+    CORS_ORIGIN_REGEX: str = r"^https://.*\.vercel\.app$"
 
     # ── Database ──────────────────────────────────────────────
     DATABASE_URL: str = "sqlite+aiosqlite:///./insightai.db"
