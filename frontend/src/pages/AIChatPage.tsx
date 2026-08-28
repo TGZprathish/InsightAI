@@ -15,6 +15,10 @@ import {
   MessageSquare,
   Copy,
   Check,
+  Key,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import api from '../lib/api';
 import MarkdownRenderer from '../components/ai/MarkdownRenderer';
@@ -58,6 +62,12 @@ export default function AIChatPage() {
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(true);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<{ provider: string; model: string; has_api_key: boolean; status: string } | null>(null);
+
+  // ── Custom API Key State ──────────────────────────────────────────
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState<string>(() => localStorage.getItem('custom_gemini_api_key') || '');
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // ── Conversation History State ──────────────────────────────────────
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -184,6 +194,36 @@ export default function AIChatPage() {
 
   const selectedDataset = datasets.find((d) => d.id === selectedDatasetId);
 
+  const handleTestApiKey = async () => {
+    setIsTestingKey(true);
+    setTestResult(null);
+    try {
+      const keyToTest = customApiKey.trim() || undefined;
+      const { data } = await api.post('/ai/test-key', { api_key: keyToTest });
+      if (data.success) {
+        setTestResult({ success: true, message: data.message || 'Connected to Google Gemini successfully!' });
+      } else {
+        setTestResult({ success: false, message: data.error || 'Connection failed' });
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: err.response?.data?.detail || err.message || 'Failed to connect to AI engine',
+      });
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
+
+  const handleSaveApiKey = (newKey: string) => {
+    setCustomApiKey(newKey);
+    if (newKey.trim()) {
+      localStorage.setItem('custom_gemini_api_key', newKey.trim());
+    } else {
+      localStorage.removeItem('custom_gemini_api_key');
+    }
+  };
+
   const handleSend = async (customPrompt?: string) => {
     const queryText = (customPrompt || input).trim();
     if (!queryText || isStreaming) return;
@@ -212,12 +252,15 @@ export default function AIChatPage() {
     };
     setMessages((prev) => [...prev, placeholderAssistantMsg]);
 
+    const activeApiKey = customApiKey.trim() || undefined;
+
     try {
       const { data } = await api.post('/ai/dataset-chat', {
         dataset_id: selectedDataset.id,
         prompt: queryText,
         persona: persona,
         conversation_id: conversationId || undefined,
+        api_key: activeApiKey,
       });
 
       if (data.conversation_id) {
@@ -356,6 +399,18 @@ export default function AIChatPage() {
             ))}
           </div>
 
+          {/* AI Key Settings Button */}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setIsKeyModalOpen(true)}
+            style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: '0.3rem' }}
+            title="Configure Google Gemini API Key"
+            id="btn-ai-key"
+          >
+            <Key size={14} style={{ color: (customApiKey || aiConfig?.has_api_key) ? 'var(--color-success)' : 'var(--color-warning)' }} />
+            <span>{(customApiKey || aiConfig?.has_api_key) ? 'AI Connected' : 'Set AI Key'}</span>
+          </button>
+
           {/* New Chat Button */}
           <button
             className="btn btn-secondary btn-sm"
@@ -381,6 +436,38 @@ export default function AIChatPage() {
           </button>
         </div>
       </div>
+
+      {/* API Key Notice Banner (if not configured) */}
+      {!customApiKey && !aiConfig?.has_api_key && (
+        <div
+          style={{
+            padding: '0.45rem 0.85rem',
+            marginBottom: '0.45rem',
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid rgba(245, 158, 11, 0.25)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.5rem',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--color-warning)' }}>
+            <AlertCircle size={14} />
+            <span>
+              <strong>AI Reasoning Key:</strong> Connect your Google Gemini API Key to enable real-time dataset analysis, predictions, and Q&amp;A.
+            </span>
+          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setIsKeyModalOpen(true)}
+            style={{ fontSize: '0.6875rem', padding: '0.2rem 0.6rem' }}
+          >
+            Enter Key
+          </button>
+        </div>
+      )}
 
       {/* Dataset Selection Bar */}
       <div
@@ -928,6 +1015,165 @@ export default function AIChatPage() {
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── API Key Configuration Modal ────────────────────────────────────── */}
+      {isKeyModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '1rem',
+          }}
+          onClick={() => setIsKeyModalOpen(false)}
+        >
+          <div
+            className="card animate-fade-in"
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.5)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '1.5rem',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-lg)',
+                    background: 'rgba(99, 102, 241, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--color-primary)',
+                  }}
+                >
+                  <Key size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>AI Engine &amp; API Key Settings</h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Configure Google Gemini to enable live deep AI data reasoning
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsKeyModalOpen(false)}
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0.35rem' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Current Backend Status */}
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                marginBottom: '1.25rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block' }}>Backend AI Status</span>
+                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {aiConfig?.has_api_key ? 'Configured on Server' : 'Not configured in Render .env'}
+                </span>
+              </div>
+              <span
+                style={{
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: 'var(--radius-full)',
+                  background: (aiConfig?.has_api_key || customApiKey) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: (aiConfig?.has_api_key || customApiKey) ? 'var(--color-success)' : 'var(--color-warning)',
+                  border: (aiConfig?.has_api_key || customApiKey) ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+                }}
+              >
+                {(aiConfig?.has_api_key || customApiKey) ? '● Active' : '● Mock Fallback'}
+              </span>
+            </div>
+
+            {/* Custom Gemini Key Input */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.4rem' }}>
+                Google Gemini API Key
+              </label>
+              <input
+                type="password"
+                className="input"
+                placeholder="AIzaSy... or AQ..."
+                value={customApiKey}
+                onChange={(e) => handleSaveApiKey(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'monospace', fontSize: '0.875rem' }}
+              />
+              <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                Your key is stored securely in your browser's local storage and used for live dataset reasoning.
+              </p>
+            </div>
+
+            {/* Test Result Message */}
+            {testResult && (
+              <div
+                style={{
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '1rem',
+                  fontSize: '0.8125rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: testResult.success ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                  color: testResult.success ? 'var(--color-success)' : 'var(--color-danger)',
+                  border: testResult.success ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                }}
+              >
+                {testResult.success ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                <span>{testResult.message}</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.625rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleTestApiKey}
+                disabled={isTestingKey}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem' }}
+              >
+                <Sparkles size={14} />
+                <span>{isTestingKey ? 'Testing...' : 'Test Connection'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setIsKeyModalOpen(false)}
+                style={{ fontSize: '0.8125rem' }}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

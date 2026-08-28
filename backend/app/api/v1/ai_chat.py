@@ -169,15 +169,30 @@ def _compute_dataset_summary(
             except Exception:
                 pass
 
+    # 5. Sample Data Preview (First 10 records, sanitized)
+    sample_data_preview = []
+    try:
+        sample_df = df.head(10).copy()
+        # Replace NaN / inf with None for valid JSON serialization
+        sample_df = sample_df.replace([np.inf, -np.inf, np.nan], None)
+        sample_data_preview = sample_df.to_dict(orient="records")
+    except Exception:
+        pass
+
+    # 6. Inferred Column Types
+    column_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
     return {
         "dataset_name": dataset_name,
         "total_rows": total_rows,
         "total_cols": total_cols,
         "columns": columns,
+        "column_types": column_types,
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,
         "null_summary": {k: int(v) for k, v in null_counts.items() if v > 0},
         "total_nulls": total_nulls,
+        "sample_data_preview": sample_data_preview,
         "stats_summary": stats_summary,
         "outliers_info": outliers_info,
         "predictive_trends": predictive_trends,

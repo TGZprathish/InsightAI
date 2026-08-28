@@ -85,8 +85,8 @@ class LLMGateway:
 
         if provider == "gemini":
             clean_model = resolved_model.replace("models/", "")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent"
-            headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={key}"
+            headers = {"Content-Type": "application/json"}
             payload = {
                 "contents": [{"role": "user", "parts": [{"text": "Ping"}]}],
                 "generationConfig": {"maxOutputTokens": 5},
@@ -100,14 +100,14 @@ class LLMGateway:
                             "provider": "gemini",
                             "model": clean_model,
                             "message": f"Successfully connected to Google Gemini ({clean_model})!",
-                        }
+                         }
                     else:
                         err_detail = response.json().get("error", {}).get("message", response.text)
                         return {
                             "success": False,
                             "provider": "gemini",
                             "model": clean_model,
-                            "error": f"Gemini API returned error: {err_detail}",
+                            "error": f"Gemini API returned error ({response.status_code}): {err_detail}",
                         }
                 except Exception as e:
                     return {
@@ -186,14 +186,12 @@ class LLMGateway:
                 "mock": True,
             }
 
-        # ── Gemini Provider ──────────────────────────────────────────
         if provider == "gemini":
-            clean_model = resolved_model.replace("models/", "")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent"
-            headers = {
-                "x-goog-api-key": key,
-                "Content-Type": "application/json",
-            }
+            primary_model = resolved_model.replace("models/", "")
+            candidate_models = [primary_model]
+            for fallback in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+                if fallback not in candidate_models:
+                    candidate_models.append(fallback)
 
             contents = []
             for msg in messages:
@@ -212,28 +210,43 @@ class LLMGateway:
                     "parts": [{"text": system_prompt}]
                 }
 
+            headers = {
+                "Content-Type": "application/json",
+            }
+
+            last_err = None
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                data = response.json()
+                for target_model in candidate_models:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={key}"
+                    try:
+                        response = await client.post(url, headers=headers, json=payload)
+                        if response.status_code == 200:
+                            data = response.json()
+                            candidate = data.get("candidates", [{}])[0]
+                            content_parts = candidate.get("content", {}).get("parts", [])
+                            text = "".join(p.get("text", "") for p in content_parts)
 
-                candidate = data.get("candidates", [{}])[0]
-                content_parts = candidate.get("content", {}).get("parts", [])
-                text = "".join(p.get("text", "") for p in content_parts)
+                            usage = data.get("usageMetadata", {})
+                            input_tokens = usage.get("promptTokenCount", 500)
+                            output_tokens = usage.get("candidatesTokenCount", len(text.split()))
 
-                usage = data.get("usageMetadata", {})
-                input_tokens = usage.get("promptTokenCount", 500)
-                output_tokens = usage.get("candidatesTokenCount", len(text.split()))
+                            return {
+                                "text": text,
+                                "input_tokens": input_tokens,
+                                "output_tokens": output_tokens,
+                                "cost_usd": self._compute_gemini_cost(input_tokens, output_tokens),
+                                "model": target_model,
+                                "provider": "gemini",
+                                "mock": False,
+                            }
+                        else:
+                            last_err = f"Model {target_model} returned {response.status_code}: {response.text[:150]}"
+                            print(f"Gemini {target_model} attempt failed ({response.status_code}), trying next fallback...")
+                    except Exception as exc:
+                        last_err = str(exc)
+                        print(f"Gemini {target_model} request error: {exc}")
 
-                return {
-                    "text": text,
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "cost_usd": self._compute_gemini_cost(input_tokens, output_tokens),
-                    "model": clean_model,
-                    "provider": "gemini",
-                    "mock": False,
-                }
+            raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
         # ── Anthropic Claude Provider ────────────────────────────────
         url = "https://api.anthropic.com/v1/messages"
