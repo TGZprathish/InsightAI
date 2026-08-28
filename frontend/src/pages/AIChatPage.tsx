@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 import api from '../lib/api';
 import MarkdownRenderer from '../components/ai/MarkdownRenderer';
@@ -744,6 +745,51 @@ export default function AIChatPage() {
               >
                 {msg.role === 'user' ? (
                   <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+                ) : !msg.content ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.25rem 0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 32,
+                        height: 32,
+                        borderRadius: 'var(--radius-full)',
+                        background: 'rgba(20, 184, 166, 0.15)',
+                        color: 'var(--color-primary)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Loader2 size={18} className="animate-spin" />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Waiting for the response...
+                        </span>
+                        <span
+                          className="animate-pulse"
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--color-primary)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          ●
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        Evaluating dataset metrics &amp; synthesizing AI answer
+                      </span>
+                    </div>
+                  </div>
                 ) : (
                   <MarkdownRenderer
                     content={msg.content}
